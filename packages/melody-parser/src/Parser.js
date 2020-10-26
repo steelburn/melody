@@ -19,11 +19,14 @@ import { LEFT, RIGHT } from './Associativity';
 import {
     setStartFromToken,
     setEndFromToken,
+    setMarkFromToken,
     copyStart,
     copyEnd,
     copyLoc,
     createNode,
 } from './util';
+import { GenericTagParser } from './GenericTagParser';
+import { createMultiTagParser } from './GenericMultiTagParser';
 import { voidElements } from './elementInfo';
 import * as he from 'he';
 
@@ -46,12 +49,52 @@ const UNARY = Symbol(),
     TAG = Symbol(),
     TEST = Symbol();
 export default class Parser {
-    constructor(tokenStream) {
+    constructor(tokenStream, options) {
         this.tokens = tokenStream;
         this[UNARY] = {};
         this[BINARY] = {};
         this[TAG] = {};
         this[TEST] = {};
+        this.options = Object.assign(
+            {},
+            {
+                ignoreComments: true,
+                ignoreHtmlComments: true,
+                ignoreDeclarations: true,
+                decodeEntities: true,
+                preserveSourceLiterally: false,
+                allowUnknownTags: false,
+                multiTags: {}, // e.g. { "nav": ["endnav"], "switch": ["case", "default", "endswitch"]}
+            },
+            options
+        );
+        // If there are custom multi tags, then we allow all custom tags
+        if (Object.keys(this.options.multiTags).length > 0) {
+            this.options.allowUnknownTags = true;
+        }
+    }
+
+    applyExtension(ext) {
+        if (ext.tags) {
+            for (const tag of ext.tags) {
+                this.addTag(tag);
+            }
+        }
+        if (ext.unaryOperators) {
+            for (const op of ext.unaryOperators) {
+                this.addUnaryOperator(op);
+            }
+        }
+        if (ext.binaryOperators) {
+            for (const op of ext.binaryOperators) {
+                this.addBinaryOperator(op);
+            }
+        }
+        if (ext.tests) {
+            for (const test of ext.tests) {
+                this.addTest(test);
+            }
+        }
     }
 
     addUnaryOperator(op: UnaryOperator) {
@@ -104,46 +147,155 @@ export default class Parser {
             switch (token.type) {
                 case Types.EXPRESSION_START: {
                     const expression = this.matchExpression();
-                    p.add(
-                        copyLoc(
-                            new n.PrintExpressionStatement(expression),
-                            expression
-                        )
+                    const statement = new n.PrintExpressionStatement(
+                        expression
                     );
-                    setEndFromToken(p, tokens.expect(Types.EXPRESSION_END));
+                    const endToken = tokens.expect(Types.EXPRESSION_END);
+                    setStartFromToken(statement, token);
+                    setEndFromToken(statement, endToken);
+                    setEndFromToken(p, endToken);
+                    statement.trimLeft = !!expression.trimLeft;
+                    statement.trimRight = !!expression.trimRight;
+                    p.add(statement);
+
                     break;
                 }
                 case Types.TAG_START:
                     p.add(this.matchTag());
                     break;
-                case Types.TEXT:
-                    p.add(
-                        createNode(
-                            n.PrintTextStatement,
-                            token,
-                            createNode(n.StringLiteral, token, token.text)
-                        )
+                case Types.TEXT: {
+                    const textStringLiteral = createNode(
+                        n.StringLiteral,
+                        token,
+                        token.text
                     );
-                    break;
-                case Types.ENTITY:
-                    p.add(
-                        createNode(
-                            n.PrintTextStatement,
-                            token,
-                            createNode(
-                                n.StringLiteral,
-                                token,
-                                he.decode(token.text)
-                            )
-                        )
+                    const textTextStatement = createNode(
+                        n.PrintTextStatement,
+                        token,
+                        textStringLiteral
                     );
+                    p.add(textTextStatement);
                     break;
+                }
+                case Types.ENTITY: {
+                    const entityStringLiteral = createNode(
+                        n.StringLiteral,
+                        token,
+                        !this.options.decodeEntities ||
+                            this.options.preserveSourceLiterally
+                            ? token.text
+                            : he.decode(token.text)
+                    );
+                    const entityTextStatement = createNode(
+                        n.PrintTextStatement,
+                        token,
+                        entityStringLiteral
+                    );
+                    p.add(entityTextStatement);
+                    break;
+                }
                 case Types.ELEMENT_START:
                     p.add(this.matchElement());
+                    break;
+                case Types.DECLARATION_START: {
+                    const declarationNode = this.matchDeclaration();
+                    if (!this.options.ignoreDeclarations) {
+                        p.add(declarationNode);
+                    }
+                    break;
+                }
+                case Types.COMMENT:
+                    if (!this.options.ignoreComments) {
+                        const stringLiteral = createNode(
+                            n.StringLiteral,
+                            token,
+                            token.text
+                        );
+                        const twigComment = createNode(
+                            n.TwigComment,
+                            token,
+                            stringLiteral
+                        );
+                        p.add(twigComment);
+                    }
+                    break;
+                case Types.HTML_COMMENT:
+                    if (!this.options.ignoreHtmlComments) {
+                        const stringLiteral = createNode(
+                            n.StringLiteral,
+                            token,
+                            token.text
+                        );
+                        const htmlComment = createNode(
+                            n.HtmlComment,
+                            token,
+                            stringLiteral
+                        );
+                        p.add(htmlComment);
+                    }
                     break;
             }
         }
         return p;
+    }
+
+    /**
+     * e.g., <!DOCTYPE html>
+     */
+    matchDeclaration() {
+        const tokens = this.tokens,
+            declarationStartToken = tokens.la(-1);
+        let declarationType = null,
+            currentToken = null;
+
+        if (!(declarationType = tokens.nextIf(Types.SYMBOL))) {
+            this.error({
+                title: 'Expected declaration start',
+                pos: declarationStartToken.pos,
+                advice:
+                    "After '<!', an unquoted symbol like DOCTYPE is expected",
+            });
+        }
+
+        const declaration = new n.Declaration(declarationType.text);
+        while ((currentToken = tokens.next())) {
+            if (currentToken.type === Types.SYMBOL) {
+                const symbol = createNode(
+                    n.Identifier,
+                    currentToken,
+                    currentToken.text
+                );
+                declaration.parts.push(symbol);
+            } else if (currentToken.type === Types.STRING_START) {
+                const stringToken = tokens.expect(Types.STRING);
+                declaration.parts.push(
+                    createNode(n.StringLiteral, stringToken, stringToken.text)
+                );
+                tokens.expect(Types.STRING_END);
+            } else if (currentToken.type === Types.EXPRESSION_START) {
+                const expression = this.matchExpression();
+                declaration.parts.push(
+                    copyLoc(
+                        new n.PrintExpressionStatement(expression),
+                        expression
+                    )
+                );
+                tokens.expect(Types.EXPRESSION_END);
+            } else if (currentToken.type === Types.ELEMENT_END) {
+                break;
+            } else {
+                this.error({
+                    title: 'Expected string, symbol, or expression',
+                    pos: currentToken.pos,
+                    advice:
+                        'Only strings or symbols can be part of a declaration',
+                });
+            }
+        }
+        setStartFromToken(declaration, declarationStartToken);
+        setEndFromToken(declaration, currentToken);
+
+        return declaration;
     }
 
     /**
@@ -152,24 +304,24 @@ export default class Parser {
      *              | matchExpression
      */
     matchElement() {
-        let tokens = this.tokens,
-            elementStartToken = tokens.la(0),
-            elementName,
-            element;
+        const tokens = this.tokens,
+            elementNameToken = tokens.la(0),
+            tagStartToken = tokens.la(-1);
+        let elementName;
         if (!(elementName = tokens.nextIf(Types.SYMBOL))) {
             this.error({
                 title: 'Expected element start',
-                pos: elementStartToken.pos,
+                pos: elementNameToken.pos,
                 advice:
                     tokens.lat(0) === Types.SLASH
-                        ? `Unexpected closing "${tokens.la(1)
-                              .text}" tag. Seems like your DOM is out of control.`
+                        ? `Unexpected closing "${
+                              tokens.la(1).text
+                          }" tag. Seems like your DOM is out of control.`
                         : 'Expected an element to start',
             });
         }
 
-        element = new n.Element(elementName.text);
-        setStartFromToken(element, elementStartToken);
+        const element = new n.Element(elementName.text);
 
         this.matchAttributes(element, tokens);
 
@@ -201,7 +353,11 @@ export default class Parser {
                 }).expressions;
             }
         }
+
+        setStartFromToken(element, tagStartToken);
         setEndFromToken(element, tokens.la(-1));
+        setMarkFromToken(element, 'elementNameLoc', elementNameToken);
+
         return element;
     }
 
@@ -245,7 +401,8 @@ export default class Parser {
                     }
                     tokens.expect(Types.STRING_END);
                     if (!nodes.length) {
-                        nodes.push(createNode(n.StringLiteral, start, ''));
+                        const node = createNode(n.StringLiteral, start, '');
+                        nodes.push(node);
                     }
 
                     let expr = nodes[0];
@@ -255,6 +412,12 @@ export default class Parser {
                         expr.loc.start.line = line;
                         expr.loc.start.column = column;
                         copyEnd(expr, expr.right);
+                    }
+                    // Distinguish between BinaryConcatExpression generated by
+                    // this Parser (implicit before parsing), and those that the
+                    // user wrote explicitly.
+                    if (nodes.length > 1) {
+                        expr.wasImplicitConcatenation = true;
                     }
                     const attr = new n.Attribute(keyNode, expr);
                     copyStart(attr, keyNode);
@@ -279,32 +442,80 @@ export default class Parser {
         }
     }
 
-    error(options) {
-        this.tokens.error(options.title, options.pos, options.advice);
+    error(options, metadata = {}) {
+        this.tokens.error(
+            options.title,
+            options.pos,
+            options.advice,
+            1,
+            metadata
+        );
+    }
+
+    getGenericParserFor(tagName) {
+        if (this.options.multiTags[tagName]) {
+            return createMultiTagParser(
+                tagName,
+                this.options.multiTags[tagName]
+            );
+        } else {
+            return GenericTagParser;
+        }
     }
 
     matchTag() {
-        let tokens = this.tokens,
-            tag = tokens.expect(Types.SYMBOL),
-            parser = this[TAG][tag.text];
+        const tokens = this.tokens;
+        const tagStartToken = tokens.la(-1);
+
+        const tag = tokens.expect(Types.SYMBOL);
+        let parser = this[TAG][tag.text];
+        let isUsingGenericParser = false;
         if (!parser) {
-            tokens.error(
-                `Unknown tag "${tag.text}"`,
-                tag.pos,
-                `Expected a known tag such as\n- ${Object.getOwnPropertyNames(
-                    this[TAG]
-                ).join('\n- ')}`,
-                tag.length
-            );
+            if (this.options.allowUnknownTags) {
+                parser = this.getGenericParserFor(tag.text);
+                isUsingGenericParser = true;
+            } else {
+                tokens.error(
+                    `Unknown tag "${tag.text}"`,
+                    tag.pos,
+                    `Expected a known tag such as\n- ${Object.getOwnPropertyNames(
+                        this[TAG]
+                    ).join('\n- ')}`,
+                    tag.length
+                );
+            }
         }
-        return parser.parse(this, tag);
+
+        const result = parser.parse(this, tag);
+        const tagEndToken = tokens.la(-1);
+        if (!isUsingGenericParser) {
+            result.trimLeft = tagStartToken.text.endsWith('-');
+            result.trimRight = tagEndToken.text.startsWith('-');
+        }
+
+        setStartFromToken(result, tagStartToken);
+        setEndFromToken(result, tagEndToken);
+        setMarkFromToken(result, 'tagNameLoc', tag);
+
+        return result;
     }
 
     matchExpression(precedence = 0) {
-        let expr = this.getPrimary(),
-            tokens = this.tokens,
-            token,
-            op;
+        const tokens = this.tokens,
+            exprStartToken = tokens.la(0);
+        let token,
+            op,
+            trimLeft = false;
+
+        // Check for {{- (trim preceding whitespace)
+        if (
+            tokens.la(-1).type === Types.EXPRESSION_START &&
+            tokens.la(-1).text.endsWith('-')
+        ) {
+            trimLeft = true;
+        }
+
+        let expr = this.getPrimary();
         while (
             (token = tokens.la(0)) &&
             token.type !== Types.EOF &&
@@ -325,7 +536,27 @@ export default class Parser {
             token = tokens.la(0);
         }
 
-        return precedence === 0 ? this.matchConditionalExpression(expr) : expr;
+        var result = expr;
+        if (precedence === 0) {
+            setEndFromToken(expr, tokens.la(-1));
+            result = this.matchConditionalExpression(expr);
+            // Update the local token variable because the stream pointer already advanced.
+            token = tokens.la(0);
+        }
+
+        // Check for -}} (trim following whitespace)
+        if (token.type === Types.EXPRESSION_END && token.text.startsWith('-')) {
+            result.trimRight = true;
+        }
+        if (trimLeft) {
+            result.trimLeft = trimLeft;
+        }
+
+        const exprEndToken = tokens.la(-1);
+        setStartFromToken(result, exprStartToken);
+        setEndFromToken(result, exprEndToken);
+
+        return result;
     }
 
     getPrimary() {
@@ -391,15 +622,22 @@ export default class Parser {
                 } else if (token.type === Types.LBRACKET) {
                     node = this.matchMap();
                 } else {
-                    this.error({
-                        title:
-                            'Unexpected token "' +
-                            token.type +
-                            '" of value "' +
-                            token.text +
-                            '"',
-                        pos: token.pos,
-                    });
+                    this.error(
+                        {
+                            title:
+                                'Unexpected token "' +
+                                token.type +
+                                '" of value "' +
+                                token.text +
+                                '"',
+                            pos: token.pos,
+                        },
+                        {
+                            errorType: 'UNEXPECTED_TOKEN',
+                            tokenText: token.text,
+                            tokenType: token.type,
+                        }
+                    );
                 }
                 break;
         }
@@ -408,13 +646,11 @@ export default class Parser {
     }
 
     matchStringExpression() {
-        let tokens = this.tokens,
+        let canBeString = true,
+            token;
+        const tokens = this.tokens,
             nodes = [],
-            canBeString = true,
-            token,
-            stringStart,
-            stringEnd;
-        stringStart = tokens.expect(Types.STRING_START);
+            stringStart = tokens.expect(Types.STRING_START);
         while (!tokens.test(Types.STRING_END)) {
             if (canBeString && (token = tokens.nextIf(Types.STRING))) {
                 nodes[nodes.length] = createNode(
@@ -431,7 +667,7 @@ export default class Parser {
                 break;
             }
         }
-        stringEnd = tokens.expect(Types.STRING_END);
+        const stringEnd = tokens.expect(Types.STRING_END);
 
         if (!nodes.length) {
             return setEndFromToken(
@@ -449,12 +685,19 @@ export default class Parser {
             copyEnd(expr, expr.right);
         }
 
+        if (nodes.length > 1) {
+            expr.wasImplicitConcatenation = true;
+        }
+
+        setStartFromToken(expr, stringStart);
+        setEndFromToken(expr, stringEnd);
+
         return expr;
     }
 
     matchConditionalExpression(test: Node) {
-        let tokens = this.tokens,
-            condition = test,
+        const tokens = this.tokens;
+        let condition = test,
             consequent,
             alternate;
         while (tokens.nextIf(Types.QUESTION_MARK)) {

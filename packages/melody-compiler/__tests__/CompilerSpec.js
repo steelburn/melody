@@ -81,7 +81,7 @@ describe('Compiler', function() {
                     },
                 }
             );
-            const jsCode = toString(jsTemplate, code);
+            const jsCode = toString(jsTemplate, code).code;
             expect(jsCode).toMatchSnapshot();
         });
 
@@ -192,7 +192,7 @@ describe('Compiler', function() {
                 'foo',
                 '_template',
             ]);
-            expect(testScope === fooScope).toEqual(true);
+            expect(testScope === fooScope).toBeTruthy();
         });
     });
 

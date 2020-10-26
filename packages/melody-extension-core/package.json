@@ -1,6 +1,6 @@
 {
   "name": "melody-extension-core",
-  "version": "1.1.0",
+  "version": "1.7.5",
   "description": "",
   "main": "./lib/index.js",
   "jsnext:main": "./lib/index.esm.js",
@@ -15,19 +15,11 @@
     "lodash": "^4.12.0",
     "shortid": "^2.2.6"
   },
-  "bundledDependencies": [
-    "babel-types",
-    "babel-template",
-    "shortid"
-  ],
   "peerDependencies": {
     "melody-idom": "^1.1.0",
     "melody-parser": "^1.1.0",
     "melody-runtime": "^1.1.0",
     "melody-traverse": "^1.1.0",
     "melody-types": "^1.1.0"
-  },
-  "devDependencies": {
-    "rollup-plugin-babel": "^2.6.1"
   }
 }

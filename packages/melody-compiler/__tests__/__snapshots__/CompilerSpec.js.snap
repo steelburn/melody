@@ -1588,8 +1588,9 @@ export default function Macros(props) {
 
 exports[`Compiler should correctly transform mount.template 1`] = `
 "
+import { AsyncComponent } from \\"melody-runtime\\";
 import Footwig from \\"foo.twig\\";
-import { component } from \\"melody-idom\\";
+import { component, text, elementOpen, elementClose } from \\"melody-idom\\";
 import Component from \\"./component\\";
 export const _template = {};
 
@@ -1600,8 +1601,92 @@ _template.render = function (_context) {
     foo: \\"bar\\"
   });
   component(_context.Foo, \\"bar\\");
-  component(_context.Foo, \\"bar\\", {
+  component(_context.async, \\"bar\\", {
     foo: \\"bar\\"
+  });
+  component(AsyncComponent, \\"bar\\", {
+    promisedComponent: () => import( /* webpackChunkName: \\"bar\\" */\\"foo.twig\\"),
+    delayLoadingAnimation: 0,
+    whileLoading: () => {
+      text(\\" Loading... \\");
+      text(_context.err);
+    },
+    onError: err => {
+      text(\\" Failed to load with \\");
+      text(err);
+    },
+    data: {
+      foo: \\"bar\\"
+    }
+  });
+  component(AsyncComponent, \\"bar\\", {
+    promisedComponent: () => import( /* webpackChunkName: \\"bar\\" */\\"foo.twig\\"),
+    delayLoadingAnimation: 500,
+    whileLoading: () => {
+      text(\\" Loading... \\");
+      text(_context.err);
+    },
+    onError: err => {
+      text(\\" Failed to load with \\");
+      text(err);
+    },
+    data: {
+      foo: \\"bar\\"
+    }
+  });
+  component(AsyncComponent, \\"bar\\", {
+    promisedComponent: () => import( /* webpackChunkName: \\"bar\\" */\\"foo.twig\\"),
+    delayLoadingAnimation: 1000,
+    whileLoading: () => {
+      text(\\" Loading... \\");
+      text(_context.err);
+    },
+    onError: error => {
+      text(\\" Failed to load with \\");
+      text(error);
+      text(_context.err);
+    },
+    data: {
+      foo: \\"bar\\"
+    }
+  });
+  component(AsyncComponent, \\"\\" + (\\"bar-\\" + _context.part), {
+    promisedComponent: () => import( /*  */\\"./parts/\\" + _context.part + \\".twig\\"),
+    delayLoadingAnimation: 1000,
+    whileLoading: () => {
+      text(\\" Loading... \\");
+      text(_context.err);
+    },
+    onError: err => {
+      text(\\" Failed to load with \\");
+      text(err);
+    },
+    data: {
+      foo: \\"bar\\"
+    }
+  });
+  component(AsyncComponent, \\"bar\\", {
+    promisedComponent: () => import( /* webpackChunkName: \\"bar\\" */\\"./parts/\\" + _context.part + \\".twig\\"),
+    delayLoadingAnimation: 1000,
+    whileLoading: () => {
+      text(\\" Loading... \\");
+      text(_context.err);
+    },
+    data: {
+      foo: \\"bar\\"
+    }
+  });
+  component(AsyncComponent, \\"bar\\", {
+    promisedComponent: () => import( /* webpackChunkName: \\"bar\\" */\\"./parts/\\" + _context.part + \\".twig\\"),
+    delayLoadingAnimation: 1000,
+    whileLoading: () => {
+      elementOpen(\\"strong\\", null, null);
+      text(\\"Loading...\\");
+      elementClose(\\"strong\\");
+    },
+    data: {
+      foo: \\"bar\\"
+    }
   });
 };
 
@@ -2023,6 +2108,34 @@ export default function Spaceless(props) {
 "
 `;
 
+exports[`Compiler should correctly transform static to dynamic attrs.template 1`] = `
+"
+import { elementVoid, elementOpen, elementClose } from \\"melody-idom\\";
+export const _template = {};
+const _statics = [\\"class\\", \\"foo\\"];
+
+_template.render = function (_context) {
+    elementOpen(\\"div\\", null, null);
+
+    if (_context.foo) {
+        elementVoid(\\"div\\", \\"7*U2;JR\\", _statics);
+    } else {
+        elementVoid(\\"div\\", null, null, \\"class\\", \\"foo \\" + (_context.bar ? \\"bar\\" : \\"\\"));
+    }
+
+    elementClose(\\"div\\");
+};
+
+if (process.env.NODE_ENV !== \\"production\\") {
+    _template.displayName = \\"StaticToDynamicAttrs\\";
+}
+
+export default function StaticToDynamicAttrs(props) {
+    return _template.render(props);
+}
+"
+`;
+
 exports[`Compiler should correctly transform styles.template 1`] = `
 "
 import { text, elementOpen, elementClose, elementOpenStart, elementOpenEnd, attr } from \\"melody-idom\\";
@@ -2179,6 +2292,26 @@ export default function Svg(props) {
 "
 `;
 
+exports[`Compiler should fail transforming empty async mount.template 1`] = `
+"Asynchronously mounted components must have a placeholder
+> 1 | {% mount async './parts/#{ part }.twig' as 'bar' with {foo: 'bar'} delay placeholder by 1s %}
+    |    ^^^^^^^^^^^
+  2 | {% endmount %}
+  3 | 
+
+When using an async component you must provide a placeholder that can be rendered while your component is being loaded.
+Example:
+{% mount async 'my-component' as 'mycomp' %}
+This is the placeholder content that will be shown to your users while the async component is being loaded."
+`;
+
+exports[`Compiler should fail transforming nonbreakable space.template 1`] = `
+"ERROR: Unsupported token: Non-breaking space
+> 1 | {{ 'success_msg' | sort }}
+    |                   ^
+  2 | "
+`;
+
 exports[`Compiler should fail transforming unknown filter.template 1`] = `
 "Unknown filter \\"unknown\\"
 > 1 | {{ test | unknown }}
@@ -2227,6 +2360,26 @@ http://twig.sensiolabs.org/doc/filters/index.html"
 `;
 
 exports[`Compiler should fail transforming wrong import.template 1`] = `"Import must be used in macro, block or template"`;
+
+exports[`Compiler should fail transforming wrong include.template 1`] = `
+"Dynamic includes are not supported
+  1 | <div>
+> 2 |   {% include \\"./path/#{template}\\" %}
+    |      ^
+  3 | </div>
+  4 | 
+
+The Include Statement expected a StringLiteral but got a BinaryExpression.
+Includes only support static strings as argument.
+
+To include a template asynchronously you can use the \\"mount async\\" statement:
+
+{% mount async './#{ partial }.twig' as 'bar-#{ partial }' with _context %}
+    {{ err }}
+{% catch err %}
+    Failed to load with {{ err }}
+{% endmounts %}"
+`;
 
 exports[`Compiler should transform templates with warnings mount without as.template 1`] = `
 "
@@ -2346,8 +2499,7 @@ export default function Test(props) {
 `;
 
 exports[`Compiler when converting expressions to JS 1`] = `
-Object {
-  "code": "import { text } from \\"melody-idom\\";
+"import { text } from \\"melody-idom\\";
 export const _template = {};
 export function item(name) {
   text(name != null && name !== '' ? name : \\"test\\");
@@ -2379,9 +2531,7 @@ if (process.env.NODE_ENV !== \\"production\\") {
 
 export default function Test(props) {
   return _template.render(props);
-}",
-  "map": null,
-}
+}"
 `;
 
 exports[`Compiler when converting should support dynamic attributes 1`] = `

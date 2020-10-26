@@ -45,13 +45,16 @@ type WhatWGAddEventListener = (
 
 let supportsPassiveListeners = false;
 /* istanbul ignore next */
-(document.createElement('div')
-    .addEventListener as WhatWGAddEventListener)('test', function() {}, {
-    get passive() {
-        supportsPassiveListeners = true;
-        return false;
-    },
-});
+(document.createElement('div').addEventListener as WhatWGAddEventListener)(
+    'test',
+    function() {},
+    {
+        get passive() {
+            supportsPassiveListeners = true;
+            return false;
+        },
+    }
+);
 
 const BUSY_FRAME_LENGTH = 3;
 const IDLE_FRAME_LENGTH = 30;
@@ -87,17 +90,19 @@ function addToQueue(component: RenderableComponent): void {
                 return;
             }
 
-            // 2: Is the parent of this component already scheduled for an update?
-            if (getParent(component) === head.component) {
-                // if so: we don't need to do anything
-                return;
-            }
+            if (component.type !== 'streaming') {
+                // 2: Is the parent of this component already scheduled for an update?
+                if (getParent(component) === head.component) {
+                    // if so: we don't need to do anything
+                    return;
+                }
 
-            // 3: Is the component a parent of a node within the queue?
-            if (getParent(head.component) === component) {
-                // if so: replace the child with its parent
-                head.component = component;
-                return;
+                // 3: Is the component a parent of a node within the queue?
+                if (getParent(head.component) === component) {
+                    // if so: replace the child with its parent
+                    head.component = component;
+                    return;
+                }
             }
 
             if (head.next === NIL) {

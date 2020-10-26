@@ -25,6 +25,7 @@ const State = {
     STRING_DOUBLE: 'STRING_DOUBLE',
     ELEMENT: 'ELEMENT',
     ATTRIBUTE_VALUE: 'ATTRIBUTE_VALUE',
+    DECLARATION: 'DECLARATION',
 };
 
 const STATE = Symbol(),
@@ -50,11 +51,24 @@ const CHAR_TO_TOKEN = {
 };
 
 export default class Lexer {
-    constructor(input) {
+    constructor(input, { preserveSourceLiterally = false } = {}) {
         this.input = input;
         this[STATE] = [State.TEXT];
         this[OPERATORS] = [];
         this[STRING_START] = null;
+        this.options = {
+            preserveSourceLiterally:
+                preserveSourceLiterally === true ? true : false,
+        };
+    }
+
+    applyExtension(ext) {
+        if (ext.unaryOperators) {
+            this.addOperators(...ext.unaryOperators.map(op => op.text));
+        }
+        if (ext.binaryOperators) {
+            this.addOperators(...ext.binaryOperators.map(op => op.text));
+        }
     }
 
     reset() {
@@ -180,6 +194,17 @@ export default class Lexer {
                             input.next();
                         }
                         return this.createToken(TokenTypes.HTML_COMMENT, pos);
+                    } else if (
+                        input.la(1) === '!' &&
+                        (isAlpha(input.lac(2)) || isWhitespace(input.la(2)))
+                    ) {
+                        input.next();
+                        input.next();
+                        this.pushState(State.DECLARATION);
+                        return this.createToken(
+                            TokenTypes.DECLARATION_START,
+                            pos
+                        );
                     } else {
                         return this.matchText(pos);
                     }
@@ -258,6 +283,21 @@ export default class Lexer {
                     return this.createToken(TokenTypes.STRING_END, pos);
                 } else {
                     return this.matchAttributeValue(pos);
+                }
+            } else if (this.state === State.DECLARATION) {
+                switch (c) {
+                    case '>':
+                        input.next();
+                        this.popState();
+                        return this.createToken(TokenTypes.ELEMENT_END, pos);
+                    case '"':
+                        input.next();
+                        this.pushState(State.STRING_DOUBLE);
+                        return this.createToken(TokenTypes.STRING_START, pos);
+                    case '{':
+                        return this.matchExpressionToken(pos);
+                    default:
+                        return this.matchSymbol(pos);
                 }
             } else {
                 return this.error(`Invalid state ${this.state}`, pos);
@@ -355,6 +395,11 @@ export default class Lexer {
                 } else if (CHAR_TO_TOKEN.hasOwnProperty(c)) {
                     input.next();
                     return this.createToken(CHAR_TO_TOKEN[c], pos);
+                } else if (c === '\xa0') {
+                    return this.error(
+                        'Unsupported token: Non-breaking space',
+                        pos
+                    );
                 } else {
                     return this.error(`Unknown token ${c}`, pos);
                 }
@@ -508,7 +553,13 @@ export default class Lexer {
             }
         }
         var result = this.createToken(TokenTypes.STRING, pos);
-        result.text = result.text.replace('\\', '');
+        // Replace double backslash before escaped quotes
+        if (!this.options.preserveSourceLiterally) {
+            result.text = result.text.replace(
+                new RegExp('(?:\\\\)(' + start + ')', 'g'),
+                '$1'
+            );
+        }
         return result;
     }
 
@@ -533,7 +584,13 @@ export default class Lexer {
             }
         }
         var result = this.createToken(TokenTypes.STRING, pos);
-        result.text = result.text.replace('\\', '');
+        // Replace double backslash before escaped quotes
+        if (!this.options.preserveSourceLiterally) {
+            result.text = result.text.replace(
+                new RegExp('(?:\\\\)(' + start + ')', 'g'),
+                '$1'
+            );
+        }
         return result;
     }
 
@@ -546,7 +603,7 @@ export default class Lexer {
             }
             input.next();
         }
-        if (input.la(0) === '.') {
+        if (input.la(0) === '.' && isDigit(input.lac(1))) {
             input.next();
             while ((c = input.lac(0)) !== EOF) {
                 if (!isDigit(c)) {
@@ -568,7 +625,12 @@ export default class Lexer {
                     break;
                 }
             } else if (c === '<') {
-                if (input.la(1) === '/' || isAlpha(input.lac(1))) {
+                const nextChar = input.la(1);
+                if (
+                    nextChar === '/' || // closing tag
+                    nextChar === '!' || // HTML comment
+                    isAlpha(input.lac(1)) // opening tag
+                ) {
                     break;
                 } else if (input.la(1) === '{') {
                     const c2 = input.la(1);

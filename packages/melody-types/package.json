@@ -1,6 +1,6 @@
 {
   "name": "melody-types",
-  "version": "1.1.0",
+  "version": "1.7.5",
   "description": "",
   "main": "./lib/index.js",
   "jsnext:main": "./lib/index.esm.js",
@@ -11,11 +11,5 @@
   "license": "Apache-2.0",
   "dependencies": {
     "babel-types": "^6.8.1"
-  },
-  "bundledDependencies": [
-    "babel-types"
-  ],
-  "devDependencies": {
-    "rollup-plugin-babel": "^2.6.1"
   }
 }

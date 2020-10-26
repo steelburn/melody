@@ -32,14 +32,10 @@ export default function({ rawLines, lineNumber, colNumber, length }) {
                 return;
             }
 
-            if (colNumber) {
-                params.line += `\n${params.before}${repeat(
-                    ' ',
-                    params.width
-                )}${params.after}${repeat(' ', colNumber)}${repeat(
-                    '^',
-                    length
-                )}`;
+            if (typeof colNumber === 'number') {
+                params.line += `\n${params.before}${repeat(' ', params.width)}${
+                    params.after
+                }${repeat(' ', colNumber)}${repeat('^', length)}`;
             }
 
             params.before = params.before.replace(/^./, '>');

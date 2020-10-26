@@ -23,7 +23,23 @@ export function setEndFromToken(node, { pos: { line, column }, end }) {
     return node;
 }
 
-export function copyStart(node, { loc: { start: { line, column, index } } }) {
+export function setMarkFromToken(
+    node,
+    propertyName,
+    { pos: { index, line, column } }
+) {
+    node[propertyName] = { line, column, index };
+    return node;
+}
+
+export function copyStart(
+    node,
+    {
+        loc: {
+            start: { line, column, index },
+        },
+    }
+) {
     node.loc.start.line = line;
     node.loc.start.column = column;
     node.loc.start.index = index;
@@ -35,6 +51,13 @@ export function copyEnd(node, end) {
     node.loc.end.column = end.loc.end.column;
     node.loc.end.index = end.loc.end.index;
     return node;
+}
+
+export function getNodeSource(node, entireSource) {
+    if (entireSource && node.loc.start && node.loc.end) {
+        return entireSource.substring(node.loc.start.index, node.loc.end.index);
+    }
+    return '';
 }
 
 export function copyLoc(node, { loc: { start, end } }) {
@@ -53,4 +76,25 @@ export function createNode(Type, token, ...args) {
 
 export function startNode(Type, token, ...args) {
     return setStartFromToken(new Type(...args), token);
+}
+
+export function hasTagStartTokenTrimLeft(token) {
+    return token.text.endsWith('-');
+}
+
+export function hasTagEndTokenTrimRight(token) {
+    return token.text.startsWith('-');
+}
+
+export function isMelodyExtension(obj) {
+    return (
+        obj &&
+        (Array.isArray(obj.binaryOperators) ||
+            typeof obj.filterMap === 'object' ||
+            typeof obj.functionMap === 'object' ||
+            Array.isArray(obj.tags) ||
+            Array.isArray(obj.tests) ||
+            Array.isArray(obj.unaryOperators) ||
+            Array.isArray(obj.visitors))
+    );
 }

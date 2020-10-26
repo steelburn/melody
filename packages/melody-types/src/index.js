@@ -209,6 +209,7 @@ visitor(BinaryExpression, 'left', 'right');
 export class BinaryConcatExpression extends BinaryExpression {
     constructor(left: Node, right: Node) {
         super('~', left, right);
+        this.wasImplicitConcatenation = false;
     }
 }
 type(BinaryConcatExpression, 'BinaryConcatExpression');
@@ -358,3 +359,50 @@ export class Attribute extends Node {
 }
 type(Attribute, 'Attribute');
 visitor(Attribute, 'name', 'value');
+
+export class TwigComment extends Node {
+    constructor(text: StringLiteral) {
+        super();
+        this.value = text;
+    }
+}
+type(TwigComment, 'TwigComment');
+visitor(TwigComment, 'value');
+
+export class HtmlComment extends Node {
+    constructor(text: StringLiteral) {
+        super();
+        this.value = text;
+    }
+}
+type(HtmlComment, 'HtmlComment');
+visitor(HtmlComment, 'value');
+
+export class Declaration extends Node {
+    constructor(declarationType: String) {
+        super();
+        this.declarationType = declarationType;
+        this.parts = [];
+    }
+}
+type(Declaration, 'Declaration');
+visitor(Declaration, 'parts');
+
+export class GenericTwigTag extends Node {
+    constructor(tagName: String) {
+        super();
+        this.tagName = tagName;
+        this.parts = [];
+        this.sections = [];
+    }
+}
+type(GenericTwigTag, 'GenericTwigTag');
+
+export class GenericToken extends Node {
+    constructor(tokenType: String, tokenText: String) {
+        super();
+        this.tokenType = tokenType;
+        this.tokenText = tokenText;
+    }
+}
+type(GenericToken, 'GenericToken');

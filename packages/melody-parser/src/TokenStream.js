@@ -35,14 +35,20 @@ const TOKENS = Symbol(),
     LENGTH = Symbol();
 
 export default class TokenStream {
-    constructor(
-        lexer,
-        options = { ignoreComments: true, ignoreWhitespace: true }
-    ) {
+    constructor(lexer, options) {
         this.input = lexer;
         this.index = 0;
-        this.options = options;
-        this[TOKENS] = getAllTokens(lexer, options);
+        const mergedOptions = Object.assign(
+            {},
+            {
+                ignoreComments: true,
+                ignoreHtmlComments: true,
+                ignoreWhitespace: true,
+                applyWhitespaceTrimming: true,
+            },
+            options
+        );
+        this[TOKENS] = getAllTokens(lexer, mergedOptions);
         this[LENGTH] = this[TOKENS].length;
 
         if (
@@ -106,7 +112,7 @@ export default class TokenStream {
         );
     }
 
-    error(message, pos, advice, length = 1) {
+    error(message, pos, advice, length = 1, metadata = {}) {
         let errorMessage = `ERROR: ${message}\n`;
         errorMessage += codeFrame({
             rawLines: this.input.source,
@@ -122,7 +128,9 @@ export default class TokenStream {
         if (advice) {
             errorMessage += '\n\n' + advice;
         }
-        throw new Error(errorMessage);
+        const result = new Error(errorMessage);
+        Object.assign(result, metadata);
+        throw result;
     }
 }
 
@@ -168,7 +176,7 @@ function getAllTokens(lexer, options) {
         ) {
             tokens[tokens.length] = token;
         }
-        acceptWhitespaceControl = true;
+        acceptWhitespaceControl = options.applyWhitespaceTrimming;
         if (token.type === ERROR) {
             return tokens;
         }

@@ -1,0 +1,42 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`autoescape when parsing should be parsed 1`] = `
+Object {
+  "escapeType": "html",
+  "expressions": Array [
+    Object {
+      "type": "PrintTextStatement",
+      "value": Object {
+        "type": "StringLiteral",
+        "value": "Everything will be automatically escaped in this block using the ",
+      },
+    },
+    Object {
+      "trimLeft": false,
+      "trimRight": false,
+      "type": "PrintExpressionStatement",
+      "value": Object {
+        "name": "strategy",
+        "type": "Identifier",
+      },
+    },
+    Object {
+      "type": "PrintTextStatement",
+      "value": Object {
+        "type": "StringLiteral",
+        "value": " strategy.",
+      },
+    },
+  ],
+  "tagNameLoc": Object {
+    "column": 3,
+    "index": 3,
+    "line": 1,
+  },
+  "trimLeft": false,
+  "trimLeftEndautoescape": true,
+  "trimRight": false,
+  "trimRightAutoescape": true,
+  "type": "AutoescapeBlock",
+}
+`;

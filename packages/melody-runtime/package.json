@@ -1,6 +1,6 @@
 {
   "name": "melody-runtime",
-  "version": "1.1.0",
+  "version": "1.7.5",
   "description": "",
   "main": "./lib/index.js",
   "jsnext:main": "./lib/index.esm.js",
@@ -12,7 +12,7 @@
   "dependencies": {
     "lodash": "^4.12.0"
   },
-  "devDependencies": {
-    "rollup-plugin-babel": "^2.6.1"
+  "peerDependencies": {
+    "melody-idom": "^1.2.0"
   }
 }
